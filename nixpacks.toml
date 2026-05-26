@@ -1,12 +1,6 @@
 [phases.setup]
 nixPkgs = ['nodejs', 'npm']
-aptPkgs = [
-    'wget', 'gnupg', 'ca-certificates', 'procps', 'libxss1', 'libnss3', 'libasound2',
-    'libatk-bridge2.0-0', 'libgtk-3-0', 'libgbm1', 'libx11-xcb1', 'libxcomposite1',
-    'libxcursor1', 'libxdamage1', 'libxfixes3', 'libxi6', 'libxrandr2', 'libxtst6',
-    'libglib2.0-0', 'libnss3', 'libcups2', 'libdrm2', 'libxkbcommon0', 'libpango-1.0-0',
-    'libcairo2', 'libatk1.0-0', 'libexpat1', 'libxcb1'
-]
+aptPkgs = ['chromium']
 
 [phases.build]
 cmds = ['npm install']

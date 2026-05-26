@@ -8,7 +8,7 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// In Railway, we will mount a volume to this specific path
+// Use Railway's persistent volume if available, otherwise local folder
 const AUTH_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH 
     ? `${process.env.RAILWAY_VOLUME_MOUNT_PATH}/.wwebjs_auth`
     : './.wwebjs_auth';
@@ -18,6 +18,7 @@ const client = new Client({
     authStrategy: new LocalAuth({ dataPath: AUTH_DIR }),
     puppeteer: {
         headless: true,
+        executablePath: '/usr/bin/chromium', // Forces use of OS Chromium
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -34,38 +35,41 @@ const client = new Client({
 let currentQR = null;
 let isConnected = false;
 
-// 1. Generate QR Code Event
+// Event: QR Code Generated
 client.on('qr', (qr) => {
     console.log('New QR Code Generated');
-    currentQR = qr; // Save the raw text QR
+    currentQR = qr;
 });
 
-// 2. Client is Ready Event
+// Event: Client Connected
 client.on('ready', () => {
     console.log('WhatsApp Client is connected and ready!');
     isConnected = true;
-    currentQR = null; // Clear QR once connected
+    currentQR = null; 
 });
 
+// Event: Client Disconnected
 client.on('disconnected', () => {
     console.log('WhatsApp disconnected.');
     isConnected = false;
 });
 
-// 3. Catch Incoming Messages and Send to Next.js
+// Event: Incoming Message (Forward to Next.js)
 client.on('message', async (msg) => {
     if (msg.from === 'status@broadcast') return;
 
     try {
-        console.log(`Received message from ${msg.from}: ${msg.body}`);
+        console.log(`Received message from ${msg.from}`);
         
-        // POST to your Next.js API (Nuron Dashboard)
+        // Ensure this matches your Vercel Next.js URL in production
         const NEXTJS_API_URL = process.env.NEXTJS_API_URL || 'http://localhost:3000/api/whatsapp/webhook';
         
         await axios.post(NEXTJS_API_URL, {
             from: msg.from,
             body: msg.body,
-            tenant_id: process.env.TENANT_ID // Useful if running 1 worker per client initially
+            timestamp: msg.timestamp,
+            // Include tenant identification if you scale to multiple numbers
+            tenant_id: process.env.TENANT_ID || 'default_tenant'
         });
 
     } catch (err) {
@@ -73,9 +77,7 @@ client.on('message', async (msg) => {
     }
 });
 
-// --- EXPRESS API ROUTES ---
-
-// Endpoint for your Next.js dashboard to fetch the QR Code
+// API: Get QR Code
 app.get('/api/qr', async (req, res) => {
     if (isConnected) {
         return res.json({ status: 'connected', qrImage: null });
@@ -85,12 +87,11 @@ app.get('/api/qr', async (req, res) => {
         return res.json({ status: 'loading', qrImage: null });
     }
 
-    // Convert raw text QR to a Base64 Image to display on your Next.js frontend
     const qrImage = await qrcode.toDataURL(currentQR);
     res.json({ status: 'waiting_for_scan', qrImage });
 });
 
-// Endpoint for your Next.js dashboard to send replies BACK to WhatsApp
+// API: Send Message Outbound
 app.post('/api/send', async (req, res) => {
     const { to, message } = req.body;
     try {
@@ -101,7 +102,6 @@ app.post('/api/send', async (req, res) => {
     }
 });
 
-// Start everything
 const PORT = process.env.PORT || 8080;
 client.initialize();
 app.listen(PORT, () => {
