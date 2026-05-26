@@ -3,21 +3,10 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const axios = require('axios');
 const cors = require('cors');
-const { execSync } = require('child_process'); // <-- Added this to search the server
 
 const app = express();
 app.use(express.json());
 app.use(cors());
-
-// Automatically find where Railway installed Chromium
-const getChromiumPath = () => {
-    try {
-        return execSync('which chromium').toString().trim();
-    } catch (error) {
-        console.log('Could not find chromium with "which", falling back to default...');
-        return '/usr/bin/chromium';
-    }
-};
 
 const AUTH_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH 
     ? `${process.env.RAILWAY_VOLUME_MOUNT_PATH}/.wwebjs_auth`
@@ -28,7 +17,8 @@ const client = new Client({
     authStrategy: new LocalAuth({ dataPath: AUTH_DIR }),
     puppeteer: {
         headless: true,
-        executablePath: getChromiumPath(), // <-- Dynamically inserts the exact path
+        // Uses the exact path mapped in our Dockerfile
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -80,29 +70,4 @@ client.on('message', async (msg) => {
     }
 });
 
-app.get('/api/qr', async (req, res) => {
-    if (isConnected) {
-        return res.json({ status: 'connected', qrImage: null });
-    }
-    if (!currentQR) {
-        return res.json({ status: 'loading', qrImage: null });
-    }
-    const qrImage = await qrcode.toDataURL(currentQR);
-    res.json({ status: 'waiting_for_scan', qrImage });
-});
-
-app.post('/api/send', async (req, res) => {
-    const { to, message } = req.body;
-    try {
-        await client.sendMessage(to, message);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-const PORT = process.env.PORT || 8080;
-client.initialize();
-app.listen(PORT, () => {
-    console.log(`Nuron Worker running on port ${PORT}`);
-});
+// ... Keep your app.get('/api/qr') and app.post('/api/send') below this exactly as they were! ...
